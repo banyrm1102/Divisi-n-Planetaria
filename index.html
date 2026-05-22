@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>División Planetaria</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Exo+2:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root {
+  --c-bg: #04040f;
+  --c-blue: #3A86FF;
+  --c-gold: #FFD166;
+  --c-green: #00FF9C;
+  --c-purple: #9B5DE5;
+  --c-red: #FF4757;
+  --font-hud: 'Share Tech Mono', monospace;
+  --font-title: 'Orbitron', monospace;
+  --font-body: 'Exo 2', sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; cursor:none !important; }
+
+body { font-family: var(--font-body); background: var(--c-bg); overflow-x:hidden; }
+
+#rocket-cursor {
+  position:fixed; width:36px; height:36px;
+  pointer-events:none; z-index:99999;
+  transform-origin:center center; top:0; left:0; will-change:transform;
+}
+#rocket-cursor svg { width:100%; height:100%; filter:drop-shadow(0 0 6px rgba(255,160,50,.8)); }
+.smoke-particle {
+  position:fixed; pointer-events:none; z-index:99998;
+  border-radius:50%; animation:smokeAnim .7s ease-out forwards;
+}
+@keyframes smokeAnim {
+  0%   { opacity:.9; transform:scale(.3); }
+  40%  { opacity:.5; transform:scale(1); }
+  100% { opacity:0;  transform:scale(2.2) translate(var(--dx),var(--dy)); }
+}
+
+body::after {
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:9000;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.08) 2px,rgba(0,0,0,.08) 4px);
+}
+
+#canvas-container { position:fixed; inset:0; z-index:0; }
+.content { position:relative; z-index:10; }
+
+.navbar {
+  position:fixed; top:0; left:0; width:100%; padding:12px 4%;
+  background:rgba(4,4,15,.92); backdrop-filter:blur(16px);
+  display:flex; justify-content:space-between; align-items:center;
+  z-index:1000; border-bottom:1px solid rgba(0,255,156,.2);
+}
+.logo { display:flex; align-items:center; gap:10px; }
+.logo-icon {
+  width:42px; height:42px;
+  background:linear-gradient(135deg,var(--c-gold),var(--c-blue));
+  border-radius:12px; display:flex; align-items:center; justify-content:center;
+  font-size:22px;
+}
+.logo-text {
+  font-family:var(--font-title); font-size:16px; font-weight:700;
+  background:linear-gradient(135deg,#fff,var(--c-gold));
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.nav-links { display:flex; gap:24px; }
+.nav-links a {
+  color:rgba(255,255,255,.65); text-decoration:none;
+  font-size:13px; font-weight:600; text-transform:uppercase;
+  transition:all .3s;
+}
+.nav-links a:hover { color:var(--c-green); }
+.btn-play {
+  font-family:var(--font-title); font-size:12px; font-weight:700;
+  background:transparent; border:1px solid var(--c-green);
+  padding:10px 22px; border-radius:4px; color:var(--c-green);
+  text-transform:uppercase;
+}
+
+.screen { display:none; min-height:100vh; padding:90px 4% 80px; }
+.screen.active { display:block; }
+
+.hero { display:flex; align-items:center; gap:60px; min-height:85vh; flex-wrap:wrap; }
+.hero-left { flex:1; min-width:300px; }
+.hero-right { flex:1; min-width:300px; display:flex; justify-content:center; }
+
+.hud-label {
+  font-family:var(--font-hud); font-size:11px; color:var(--c-green);
+  letter-spacing:3px; margin-bottom:16px;
+  display:flex; align-items:center; gap:8px;
+}
+.hud-label::before {
+  content:''; width:6px; height:6px;
+  background:var(--c-green); border-radius:50%;
+  animation:blink 1.2s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+.hero h1 { font-family:var(--font-title); font-size:52px; font-weight:900; color:#fff; margin-bottom:20px; }
+.hero h1 span { color:var(--c-gold); }
+.hero p { font-size:16px; color:rgba(255,255,255,.55); max-width:460px; margin-bottom:32px; }
+
+.btn-hero {
+  font-family:var(--font-title); font-size:13px; font-weight:700;
+  background:linear-gradient(135deg,var(--c-blue),var(--c-purple));
+  border:none; padding:14px 36px; border-radius:4px; color:#fff;
+  text-transform:uppercase;
+}
+
+.stats-hud { display:flex; margin-top:36px; border:1px solid rgba(0,255,156,.2); border-radius:6px; }
+.stat-hud { flex:1; padding:14px 20px; text-align:center; border-right:1px solid rgba(0,255,156,.15); }
+.stat-hud:last-child { border-right:none; }
+.stat-hud-num { font-family:var(--font-hud); font-size:26px; color:var(--c-gold); display:block; }
+.stat-hud-label { font-size:10px; color:rgba(255,255,255,.4); }
+
+.planet-hud-wrapper { position:relative; width:320px; height:320px; }
+.planet-ring-label {
+  position:absolute; font-family:var(--font-hud); font-size:10px;
+  color:var(--c-green); white-space:nowrap;
+}
+.planet-ring-label.top { top:-24px; left:50%; transform:translateX(-50%); }
+.planet-ring-label.bottom { bottom:-24px; left:50%; transform:translateX(-50%); }
+.planet-hud-corners { position:absolute; inset:0; }
+.planet-hud-corners::before,.planet-hud-corners::after {
+  content:''; position:absolute; width:20px; height:20px;
+  border-color:var(--c-gold); border-style:solid;
+}
+.planet-hud-corners::before { top:0; left:0; border-width:2px 0 0 2px; }
+.planet-hud-corners::after  { bottom:0; right:0; border-width:0 2px 2px 0; }
+
+/* CABINA */
+.cockpit {
+  background:radial-gradient(ellipse 80% 60% at 50% 100%, rgba(58,134,255,.08) 0%, transparent 70%);
+  border:1px solid rgba(58,134,255,.25);
+  border-radius:20px; overflow:hidden;
+}
+.cockpit-topbar {
+  background:rgba(0,0,0,.7); padding:10px 20px;
+  display:flex; justify-content:space-between;
+  border-bottom:1px solid rgba(58,134,255,.3);
+}
+.cockpit-topbar-title { font-family:var(--font-hud); font-size:11px; color:var(--c-green); }
+.cockpit-indicators { display:flex; gap:12px; }
+.indicator { width:8px; height:8px; border-radius:50%; }
+.indicator.green { background:var(--c-green); animation:blink 2s infinite; }
+.indicator.yellow { background:var(--c-gold); animation:blink 3s infinite; }
+.indicator.red { background:var(--c-red); animation:blink 1.5s infinite; }
+
+.cockpit-grid {
+  display:grid;
+  grid-template-columns:1fr 2fr 1fr;
+  gap:1px; background:rgba(58,134,255,.1);
+}
+.cockpit-panel { background:rgba(4,4,15,.85); padding:20px; }
+.panel-title {
+  font-family:var(--font-hud); font-size:10px; color:var(--c-green);
+  margin-bottom:12px; border-bottom:1px solid rgba(0,255,156,.2);
+}
+.cockpit-panel.center {
+  grid-column:2; grid-row:1 / 3;
+  padding:0; display:flex; flex-direction:column;
+}
+.video-screen {
+  position:relative; flex:1; background:#000;
+  min-height:300px;
+}
+.video-placeholder {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:linear-gradient(135deg,#0a0a2a,#0d1a3a);
+  min-height:300px; gap:12px;
+}
+.video-placeholder-icon { font-size:48px; opacity:.5; }
+.video-placeholder-text { font-family:var(--font-hud); font-size:11px; color:rgba(255,255,255,.3); text-align:center; }
+.video-controls {
+  background:rgba(0,0,0,.8); padding:10px 16px;
+  display:flex; align-items:center; gap:12px;
+}
+.vid-btn {
+  font-family:var(--font-hud); font-size:11px; color:var(--c-green);
+  background:transparent; border:1px solid rgba(0,255,156,.3);
+  padding:5px 12px;
+}
+.photo-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+.photo-thumb { background:#0a0a20; height:100px; border-radius:8px; display:flex; align-items:center; justify-content:center; border:1px solid rgba(255,255,255,.1); }
+.cockpit-panel.bottom-bar {
+  grid-column:1 / -1;
+  display:flex; align-items:center; gap:20px; padding:12px 20px;
+  background:rgba(0,0,0,.6);
+}
+.status-chip { font-family:var(--font-hud); font-size:10px; padding:4px 10px; border-radius:3px; }
+.status-chip.ok { color:var(--c-green); border:1px solid rgba(0,255,156,.3); }
+.cockpit-ticker { flex:1; overflow:hidden; font-family:var(--font-hud); font-size:10px; color:rgba(255,255,255,.35); white-space:nowrap; }
+.ticker-inner { display:inline-block; animation:ticker 20s linear infinite; }
+@keyframes ticker { 0% { transform:translateX(100%); } 100% { transform:translateX(-100%); } }
+
+/* PERSONAJES */
+.chars-layout {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr));
+  gap:32px; max-width:1000px; margin:0 auto;
+}
+.char-hud {
+  border:1px solid rgba(255,209,102,.2); border-radius:12px;
+  background:rgba(0,0,0,.5); backdrop-filter:blur(12px);
+  transition:all .35s;
+}
+.char-hud:hover { border-color:var(--c-gold); transform:translateY(-8px); box-shadow:0 0 50px rgba(255,209,102,.3); }
+.char-hud-header {
+  background:rgba(0,0,0,.4); padding:10px 16px;
+  display:flex; justify-content:space-between;
+  border-bottom:1px solid rgba(255,209,102,.15);
+}
+.char-hud-id { font-family:var(--font-hud); font-size:10px; color:var(--c-gold); }
+.char-hud-status { font-family:var(--font-hud); font-size:10px; color:var(--c-green); }
+.char-hud-body { padding:25px; display:flex; flex-direction:column; align-items:center; text-align:center; gap:20px; }
+.char-avatar { width:180px; height:180px; border-radius:50%; border:2px solid rgba(255,209,102,.4); overflow:hidden; transition:all 0.3s; cursor:pointer; }
+.char-avatar:hover { transform:scale(1.05); box-shadow:0 0 25px rgba(255,209,102,.6); }
+.char-avatar img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
+.char-name { font-family:var(--font-title); font-size:28px; color:white; font-weight:700; }
+.char-role { font-family:var(--font-hud); font-size:14px; color:var(--c-gold); margin:8px 0; }
+.char-desc { font-size:14px; color:white; line-height:1.5; }
+.char-quote { font-size:14px; color:white; font-style:italic; padding:15px 20px; background:rgba(255,255,255,.05); border-left:2px solid var(--c-gold); margin:0 20px 16px 20px; border-radius:0 8px 8px 0; }
+.char-hud-footer { padding:12px 16px; border-top:1px solid rgba(255,209,102,.1); display:flex; justify-content:space-between; font-family:var(--font-hud); font-size:10px; color:rgba(255,255,255,.6); }
+/* LORE */
+.lore-terminal {
+  max-width:860px; margin:0 auto;
+  background:rgba(0,0,0,.85); border:1px solid rgba(0,255,156,.2);
+  border-radius:12px; overflow:hidden;
+}
+.terminal-bar {
+  background:rgba(0,0,0,.5); padding:10px 16px;
+  display:flex; justify-content:space-between;
+}
+.terminal-title { font-family:var(--font-hud); font-size:11px; color:#00FF9C; }
+.terminal-dots { display:flex; gap:6px; }
+.tdot { width:8px; height:8px; border-radius:50%; }
+.tdot.r { background:#FF4757; }
+.tdot.y { background:#FFD166; }
+.tdot.g { background:#00FF9C; }
+.terminal-body { padding:32px; }
+.transmission-header { font-family:var(--font-hud); font-size:11px; color:#00FF9C; margin-bottom:20px; }
+.lore-block { margin-bottom:25px; }
+.lore-tag { font-family:var(--font-hud); font-size:10px; color:#FFD166; display:block; margin-bottom:8px; }
+.lore-block p { font-size:15px; color:white; line-height:1.7; }
+.lore-block strong { color:#FFD166; }
+.star-map { margin-top:25px; border:1px solid rgba(58,134,255,.2); border-radius:10px; background:radial-gradient(ellipse at center,#0a1530 0%,#04040f 70%); padding:10px; }
+.star-map-label { font-family:var(--font-hud); font-size:10px; color:#00FF9C; margin-bottom:10px; text-align:center; }
+.star-map-canvas { display:block; width:100%; height:180px; }
+.lore-accept-btn {
+  display:block; margin:30px auto 0; font-family:var(--font-title);
+  font-size:13px; background:transparent; border:2px solid #00FF9C;
+  padding:12px 32px; color:#00FF9C; border-radius:8px; cursor:pointer;
+}
+.lore-accept-btn:hover { background:rgba(0,255,156,.2); }
+
+/* DEMO */
+.demo-layout {
+  display:grid; grid-template-columns:1fr 1fr; gap:32px;
+  max-width:1000px; margin:0 auto;
+}
+.demo-main {
+  background:rgba(0,0,0,.6); border:1px solid rgba(0,255,156,.2);
+  border-radius:16px; padding:36px; text-align:center;
+}
+.demo-main h3 { color:white; margin-bottom:20px; font-size:28px; }
+.demo-main p { color:rgba(255,255,255,.8); margin-bottom:25px; }
+.download-btn {
+  font-family:var(--font-title); font-size:16px; font-weight:bold;
+  background:linear-gradient(135deg,#00FF9C,#3A86FF);
+  border:none; padding:16px 40px; border-radius:8px; color:#fff;
+  width:100%; cursor:pointer;
+}
+.demo-side { display:flex; flex-direction:column; gap:16px; }
+.demo-feature-card { border-radius:12px; padding:20px; transition:all 0.3s; }
+.demo-feature-card:hover { transform:translateX(8px); }
+
+
+
+/* CRÉDITOS */
+.credits-hud {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:20px; max-width:800px; margin:0 auto;
+}
+.credit-card {
+  background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.07);
+  border-radius:12px; padding:24px; text-align:center;
+}
+.credit-icon { font-size:32px; margin-bottom:10px; }
+.credit-name { font-size:18px; font-weight:600; color:#fff; margin:8px 0; }
+.credit-role { font-size:12px; color:rgba(255,255,255,.5); }
+
+.section-head { text-align:center; margin-bottom:44px; }
+.section-head h2 { font-family:var(--font-title); font-size:34px; color:white; margin-bottom:10px; }
+.section-head .sub { font-family:var(--font-hud); font-size:12px; color:var(--c-green); letter-spacing:2px; }
+
+#dialogo-flotante {
+  position:fixed; bottom:80px; left:50%; transform:translateX(-50%);
+  background:rgba(0,0,0,.92); backdrop-filter:blur(14px);
+  border-radius:6px; padding:12px 28px;
+  border-left:3px solid var(--c-gold); display:none; z-index:9990;
+  font-family:var(--font-hud); font-size:13px; color:#fff;
+  text-align:center;
+}
+
+#lightbox {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,.95); z-index:99999;
+  align-items:center; justify-content:center; cursor:pointer;
+}
+#lightbox img {
+  max-width:90vw; max-height:90vh; border-radius:8px; border:2px solid var(--c-gold);
+}
+
+@media(max-width:768px){
+  .navbar { flex-direction:column; gap:10px; }
+  .hero h1 { font-size:34px; }
+  .cockpit-grid { grid-template-columns:1fr; }
+  .demo-layout { grid-template-columns:1fr; }
+  .chars-layout { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="rocket-cursor">
+  <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="18" cy="15" rx="6" ry="10" fill="#E0E8FF"/>
+    <path d="M12 15 Q12 5 18 3 Q24 5 24 15 Z" fill="#3A86FF"/>
+    <circle cx="18" cy="13" r="2.5" fill="#a8d4ff" stroke="white" stroke-width="0.8"/>
+    <path d="M12 18 L8 24 L12 22 Z" fill="#FFD166"/>
+    <path d="M24 18 L28 24 L24 22 Z" fill="#FFD166"/>
+    <rect x="15" y="24" width="6" height="3" rx="1.5" fill="#aaa"/>
+    <ellipse cx="18" cy="29" rx="3.5" ry="5" fill="url(#fg)" opacity=".95"/>
+    <defs><radialGradient id="fg" cx="50%" cy="30%" r="70%"><stop offset="0%" stop-color="#fff"/><stop offset="40%" stop-color="#FFD166"/></radialGradient></defs>
+  </svg>
+</div>
+
+<div id="canvas-container"></div>
+
+<div class="content">
+  <nav class="navbar">
+    <div class="logo">
+        <span class="logo-text">
+        <span style="display: inline-flex; align-items: center; gap: 8px;">
+          <img src="logo.png" style="height: 100px; vertical-align: middle;" onerror="this.style.display='none'">
+          <span style="font-size: 32px; font-weight: 700;">DIVISIÓN PLANETARIA</span>
+        </span>
+      </span>
+    </div>
+    <div class="nav-links">
+      <a href="#" onclick="goTo('inicio');return false;">Inicio</a>
+      <a href="#" onclick="goTo('juego');return false;">El Juego</a>
+      <a href="#" onclick="goTo('personajes');return false;">Personajes</a>
+      <a href="#" onclick="goTo('lore');return false;">Mundo/Lore</a>
+      <a href="#" onclick="goTo('demo');return false;">Demo</a>
+      <a href="#" onclick="goTo('creditos');return false;">Créditos</a>
+    </div>
+    <button class="btn-play" onclick="goTo('demo')">▶ JUGAR</button>
+  </nav>
+
+  <!-- INICIO -->
+  <div id="screen-inicio" class="screen active">
+    <div class="hero">
+      <div class="hero-left">
+        <div class="hud-label">ACADEMIA ESPACIAL — SECTOR 7</div>
+        <h1>Aprende a <span>dividir</span><br>viajando por<br>el espacio</h1>
+        <p>Reparte cristales de energía entre planetas y domina la división jugando.</p>
+        <button class="btn-hero" onclick="goTo('demo')">🚀 INICIAR MISIÓN</button>
+        <div class="stats-hud">
+          <div class="stat-hud"><span class="stat-hud-num" data-target="12">0</span><span class="stat-hud-label">Niveles</span></div>
+          <div class="stat-hud"><span class="stat-hud-num" data-target="3">0</span><span class="stat-hud-label">Mundos</span></div>
+          <div class="stat-hud"><span class="stat-hud-num" data-target="247">0</span><span class="stat-hud-label">Cadetes</span></div>
+          <div class="stat-hud"><span class="stat-hud-num" data-target="98">0</span><span class="stat-hud-label">% Satisf.</span></div>
+        </div>
+      </div>
+      <div class="hero-right">
+        <div class="planet-hud-wrapper">
+          <div class="planet-ring-label top">NEPTUNO-7 ◆ ÓRBITA ESTABLE</div>
+          <div class="planet-ring-label bottom">CRISTALES: 48</div>
+          <div class="planet-hud-corners"></div>
+	<!-- BANNER PROMOCIONAL CSS -->
+	<div style="text-align: center; margin-top: 40px; margin-bottom: 20px;">
+	  <div style="background: radial-gradient(ellipse at center, #0a1530, #04040f); border-radius: 20px; 	padding: 30px; border: 1px solid var(--c-green);">
+	    <div style="font-size: 50px;">🎮✨🪐</div>
+	    <div style="color: var(--c-green); font-family: var(--font-hud); font-size: 14px; margin-top: 	10px;">PRÓXIMAMENTE</div>
+	   <div style="color: white; font-size: 12px; margin-top: 5px;">Demo disponible en la sección 	DEMO</div>
+	  </div>
+</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JUEGO -->
+  <div id="screen-juego" class="screen">
+    <div class="section-head"><h2>SALA DE CONTROL</h2><div class="sub">◆ MECÁNICAS DEL JUEGO ◆</div></div>
+    <div class="cockpit">
+      <div class="cockpit-topbar">
+        <span class="cockpit-topbar-title">NAVE ACADÉMICA AX-7 ◆ SISTEMA OPERATIVO ACTIVO</span>
+        <div class="cockpit-indicators"><div class="indicator green"></div><div class="indicator yellow"></div><div class="indicator red"></div></div>
+      </div>
+      <div class="cockpit-grid">
+        <div class="cockpit-panel left">
+          <div class="panel-title">// MECÁNICAS</div>
+          <div style="padding:8px 0; color:rgba(255,255,255,.7);">🔄 Distribución de cristales</div>
+          <div style="padding:8px 0; color:rgba(255,255,255,.7);">✅ Verificación instantánea</div>
+          <div style="padding:8px 0; color:rgba(255,255,255,.7);">💎 Manejo de residuos</div>
+          <div style="padding:8px 0; color:rgba(255,255,255,.7);">⭐ Sistema de estrellas</div>
+        </div>
+        <div class="cockpit-panel center">
+          <div class="video-screen">
+            <video id="game-video" width="100%" height="100%" style="object-fit: cover;">
+              <source src="video/video.mp4" type="video/mp4">
+              Tu navegador no soporta el video.
+            </video>
+          </div>
+          <div class="video-controls">
+            <button class="vid-btn" id="play-vid-btn" onclick="playVideo()">▶ PLAY</button>
+            <button class="vid-btn" onclick="muteVideo()">🔊 MUTE</button>
+          </div>
+        </div>
+        <div class="photo-grid">
+          <div class="photo-thumb" onclick="abrirImagen('Fotos/Foto1.jpg')" style="cursor:pointer; position:relative; overflow:hidden;">
+            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; background:rgba(10,10,32,0.85);">
+              <div style="font-size:35px;">📸</div>
+              <div style="color:var(--c-gold); font-family:var(--font-hud); font-size:11px;">CLICK</div>
+            </div>
+            <img src="Fotos/Foto1.jpg" style="width:100%; height:100%; object-fit:cover; opacity:1;">
+          </div>
+          <div class="photo-thumb" onclick="abrirImagen('Fotos/Foto2.jpg')" style="cursor:pointer; position:relative; overflow:hidden;">
+            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; background:rgba(10,10,32,0.85);">
+              <div style="font-size:35px;">📸</div>
+              <div style="color:var(--c-gold); font-family:var(--font-hud); font-size:11px;">CLICK</div>
+            </div>
+            <img src="Fotos/Foto2.jpg" style="width:100%; height:100%; object-fit:cover; opacity:1;">
+          </div>
+          <div class="photo-thumb" onclick="abrirImagen('Fotos/Foto3.jpg')" style="cursor:pointer; position:relative; overflow:hidden;">
+            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; background:rgba(10,10,32,0.85);">
+              <div style="font-size:35px;">📸</div>
+              <div style="color:var(--c-gold); font-family:var(--font-hud); font-size:11px;">CLICK</div>
+            </div>
+            <img src="Fotos/Foto3.jpg" style="width:100%; height:100%; object-fit:cover; opacity:1;">
+          </div>
+          <div class="photo-thumb" onclick="abrirImagen('Fotos/Foto4.jpg')" style="cursor:pointer; position:relative; overflow:hidden;">
+            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; background:rgba(10,10,32,0.85);">
+              <div style="font-size:35px;">📸</div>
+              <div style="color:var(--c-gold); font-family:var(--font-hud); font-size:11px;">CLICK</div>
+            </div>
+            <img src="Fotos/Foto4.jpg" style="width:100%; height:100%; object-fit:cover; opacity:1;">
+          </div>
+        </div>
+      </div>
+      <div class="cockpit-panel bottom-bar">
+        <span class="status-chip ok">● SISTEMA OK</span>
+        <div class="cockpit-ticker"><span class="ticker-inner">MISIÓN ACTIVA ◆ 12 ÷ 3 = 4 CRISTALES POR PLANETA ◆ DIVIDIR ES REPARTIR EN PARTES IGUALES ◆</span></div>
+      </div>
+    </div>
+  </div>
+
+ <!-- PERSONAJES -->
+  <div id="screen-personajes" class="screen">
+    <div class="section-head"><h2>GUÍAS ESPACIALES</h2><div class="sub">◆ ESCÁNER DE TRIPULACIÓN ◆</div></div>
+    <div class="chars-layout">
+      
+      <!-- NOVA -->
+      <div class="char-hud" onclick="showDialog('🚀 Nova: ¡Hola cadete! Recuerda dividir es repartir en partes iguales.')" style="cursor: pointer;">
+        <div class="char-hud-header">
+          <span class="char-hud-id">ID: NOVA-001</span>
+          <span class="char-hud-status">● EN LÍNEA</span>
+        </div>
+        <div class="char-hud-body">
+          <div class="char-avatar">
+            <img src="personajes/nova.png" alt="Nova" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22160%22 height=%22160%22%3E%3Ccircle cx=%2280%22 cy=%2280%22 r=%2275%22 fill=%22%233A86FF%22/%3E%3Ctext x=%2280%22 y=%22105%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2250%22%3E🚀%3C/text%3E%3C/svg%3E'">
+          </div>
+          <div class="char-info">
+            <div class="char-name">NOVA</div>
+            <div class="char-role">🚀 Exploradora Matemática</div>
+            <div class="char-desc">Veterana de la Academia Espacial. Experta en distribución de recursos energéticos.</div>
+          </div>
+        </div>
+        <div class="char-quote">✨ "Tenemos 12 cristales y 3 planetas. ¿Cuántos cristales le va a cada uno?" ✨</div>
+        <div class="char-hud-footer">
+          <span>⭐ MISIONES: 347</span>
+          <span>🏆 RANGO: COMANDANTE</span>
+          <span style="color: var(--c-green);">🖱️ CLICK PARA HABLAR</span>
+        </div>
+      </div>
+
+      <!-- PIXEL -->
+      <div class="char-hud" onclick="showDialog('🤖 Pixel: ¡Bip bop! Si no sale a la primera, inténtalo de nuevo.')" style="cursor: pointer;">
+        <div class="char-hud-header">
+          <span class="char-hud-id">ID: PXL-002</span>
+          <span class="char-hud-status">● EN LÍNEA</span>
+        </div>
+        <div class="char-hud-body">
+          <div class="char-avatar">
+            <img src="personajes/pixer.png" alt="Pixel" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22160%22 height=%22160%22%3E%3Ccircle cx=%2280%22 cy=%2280%22 r=%2275%22 fill=%22%239B5DE5%22/%3E%3Ctext x=%2280%22 y=%22105%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2250%22%3E🤖%3C/text%3E%3C/svg%3E'">
+          </div>
+          <div class="char-info">
+            <div class="char-name">PIXEL</div>
+            <div class="char-role">🤖 Robot Ayudante</div>
+            <div class="char-desc">IA de la nave. Procesa errores, da pistas y celebra cada logro del cadete.</div>
+          </div>
+        </div>
+        <div class="char-quote">⚡ "¡Correcto! Has distribuido bien los cristales. Probabilidad de éxito: 100%." ⚡</div>
+        <div class="char-hud-footer">
+          <span>🔧 ERRORES: 0</span>
+          <span>📟 VERSIÓN: 4.2.1</span>
+          <span style="color: var(--c-green);">🖱️ CLICK PARA HABLAR</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MUNDO -->
+  <div id="screen-lore" class="screen">
+    <div class="section-head">
+      <h2>🌍 TRANSMISIÓN ENTRANTE</h2>
+      <div class="sub">◆ BITÁCORA DE LA ACADEMIA ESPACIAL ◆</div>
+    </div>
+    <div class="lore-terminal">
+      <div class="terminal-bar">
+        <span class="terminal-title">🔒 CANAL SEGURO — ACADEMIA ESPACIAL 7</span>
+        <div class="terminal-dots"><div class="tdot r"></div><div class="tdot y"></div><div class="tdot g"></div></div>
+      </div>
+      <div class="terminal-body">
+        <div class="transmission-header">▶ RECIBIENDO TRANSMISIÓN... SEÑAL ESTABLE</div>
+        <div class="lore-block">
+          <span class="lore-tag">// CONTEXTO DE MISIÓN</span>
+          <p>Eres un <strong>cadete de la Academia Espacial de Distribución de Recursos</strong>. Tu misión es mantener el equilibrio energético del sistema solar.</p>
+        </div>
+        <div class="lore-block">
+          <span class="lore-tag">// OBJETIVO PRINCIPAL</span>
+          <p>Los <strong style="color:#00FF9C;">cristales de energía</strong> deben ser distribuidos equitativamente entre los planetas. Cuando ves <strong style="color:#00FF9C;">12 ÷ 3</strong>, significa 12 cristales para 3 planetas.</p>
+        </div>
+        <div class="lore-block">
+          <span class="lore-tag">// SISTEMA DE PROGRESO</span>
+          <p>A medida que avanzas, desbloqueas nuevos sectores del sistema solar. Cada planeta tiene su propia dificultad.</p>
+        </div>
+        <div class="star-map">
+
+<div class="lore-block">
+  <span class="lore-tag">// PERSONAJES CLAVE</span>
+  <p>La <strong>Comandante Nova</strong> y el <strong>Robot Pixel</strong> serán tus guías en esta aventura. ¡Escúchalos! Te darán pistas importantes para resolver cada misión.</p>
+</div>
+
+<div class="lore-block">
+  <span class="lore-tag">// RECOMPENSAS</span>
+  <p>Completa misiones para ganar <strong>insignias espaciales</strong> y desbloquear nuevos niveles. ¡Cada planeta tiene un desafío único y más cristales por recolectar!</p>
+</div>
+
+<div class="lore-block">
+  <span class="lore-tag">// CONSEJO DEL COMANDANTE</span>
+  <p>💡 <strong>Dato clave:</strong> Si un planeta recibe 12 cristales y hay 4 planetas, la operación es <strong style="color:#00FF9C;">12 ÷ 4 = 3</strong>. ¡Practica con los ejemplos y verás qué fácil es!</p>
+</div>
+
+<div class="lore-block">
+  <span class="lore-tag">// PRÓXIMOS DESTINOS</span>
+  <p>🌌 ¿Listo para el desafío? Desbloquearás <strong>Marte, Júpiter y Saturno</strong> a medida que avances. Cada uno tiene una dificultad mayor y más cristales para repartir.</p>
+</div>
+
+          <div class="star-map-label">🗺️ MAPA ESTELAR — SISTEMA SOLAR AX-7</div>
+          <canvas class="star-map-canvas" id="star-map-canvas" height="180"></canvas>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 25px;">
+          <div style="background: rgba(0,255,156,0.15); border: 1px solid rgba(0,255,156,0.4); border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 24px;">🪐</div>
+            <div style="color: #00FF9C; font-family: var(--font-hud); font-size: 11px;">PLANETAS EXPLORADOS</div>
+            <div style="color: white; font-size: 28px; font-weight: bold;" id="planetas-explorados">3</div>
+          </div>
+          <div style="background: rgba(255,209,102,0.15); border: 1px solid rgba(255,209,102,0.4); border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 24px;">💎</div>
+            <div style="color: #FFD166; font-family: var(--font-hud); font-size: 11px;">CRISTALES RECOLECTADOS</div>
+            <div style="color: white; font-size: 28px; font-weight: bold;" id="cristales-recolectados">48</div>
+          </div>
+        </div>
+        <button class="lore-accept-btn" onclick="goTo('demo')">🚀 ACEPTAR MISIÓN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEMO -->
+  <div id="screen-demo" class="screen">
+    <div class="section-head">
+      <h2>DEMO JUGABLE</h2>
+      <div class="sub">◆ ACCESO CADETE DISPONIBLE ◆</div>
+    </div>
+    <div class="demo-layout">
+      <div class="demo-main">
+        <h3>🎮 ¡JUEGA AHORA!</h3>
+        <p>Juega online directamente desde tu navegador. Sin descargas, sin instalaciones.</p>
+        <button class="download-btn" onclick="window.open('https://gd.games/games/a54b8d42-5ac4-48ed-9afc-d41b45b37302', '_blank')">🎮 JUGAR ONLINE</button>
+
+	<!-- GIF DEMO -->
+	<div style="margin-top: 30px;">
+	  <img src="Fotos/Gif.gif" alt="Gameplay" style="width: 100%; max-width: 400px; border-radius: 12px; border: 2px solid var(--c-green);">
+	  <p style="color: rgba(255,255,255,0.5); font-size: 11px; text-align: center; margin-top: 8px;">🎮 	Gameplay del juego</p>
+	</div>
+
+      </div>
+      <div class="demo-side">
+        <div class="demo-feature-card" style="background: rgba(0,255,156,.12); border: 1px solid rgba(0,255,156,.3);">
+          <div style="font-size: 32px; margin-bottom: 8px;">🎓</div>
+          <div style="color: #00FF9C; font-weight: bold; font-size: 18px; margin-bottom: 6px;">Modo Práctica</div>
+          <div style="color: rgba(255,255,255,.7); font-size: 13px;">Sin tiempo ni presión. Aprende a tu ritmo con ayuda de Nova y Pixel.</div>
+        </div>
+        <div class="demo-feature-card" style="background: rgba(255,209,102,.1); border: 1px solid rgba(255,209,102,.3);">
+          <div style="font-size: 32px; margin-bottom: 8px;">⭐</div>
+          <div style="color: #FFD166; font-weight: bold; font-size: 18px; margin-bottom: 6px;">Sistema de Estrellas</div>
+          <div style="color: rgba(255,255,255,.7); font-size: 13px;">1 a 3 estrellas por nivel según precisión y velocidad.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+
+      <!-- CRÉDITOS -->
+  <div id="screen-creditos" class="screen">
+    <!-- ESPACIO PARA QUE NO LO TAPE LA NAVBAR -->
+    <div style="height: 80px;"></div>
+    
+    <!-- TÍTULO -->
+    <div style="text-align: center; margin-bottom: 40px;">
+      <h2 style="color: white; font-family: var(--font-title); font-size: 48px; margin-bottom: 10px;">EQUIPO DE DESARROLLO</h2>
+      <div style="color: var(--c-green); font-family: var(--font-hud); font-size: 16px; letter-spacing: 4px;">◆ ACADEMIA ESPACIAL ◆</div>
+    </div>
+    
+    <!-- TARJETAS MÁS GRANDES -->
+    <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 60px; max-width: 1200px; margin: 30px auto 0 auto;">
+      
+      <!-- TARJETA 1 - JASBLEIDY (MÁS GRANDE) -->
+      <div id="tarjeta-jasbleidy" style="background: rgba(0,0,0,0.8); border: 2px solid rgba(0,255,156,0.5); border-radius: 30px; padding: 50px 40px; text-align: center; width: 400px; backdrop-filter: blur(10px); transition: transform 0.3s, box-shadow 0.3s;">
+        <div id="foto-jasbleidy" style="width: 180px; height: 180px; margin: 0 auto 25px auto; border-radius: 50%; border: 4px solid var(--c-gold); overflow: hidden; background: linear-gradient(135deg, #1a2a4a, #0a0a1a); display: flex; align-items: center; justify-content: center;">
+          <img id="img-jasbleidy" src="Fotos/Jas.png" alt="Jasbleidy" style="width: 100%; height: 100%; object-fit: cover;" onerror="cargarEmojiJasbleidy()">
+        </div>
+        <div style="color: var(--c-gold); font-size: 24px; font-weight: bold; margin-bottom: 15px;">Ing. Jasbleidy Mayerly<br>Rodríguez Medina</div>
+        <div style="color: rgba(255,255,255,0.9); font-size: 18px; margin-bottom: 10px;">🎮 Desarrollo y Diseño</div>
+        <div style="margin-top: 20px; font-family: var(--font-hud); font-size: 13px; color: var(--c-green); padding: 8px 16px; border-top: 1px solid rgba(255,209,102,0.3); display: inline-block;">⭐ MISIÓN: CREATIVIDAD</div>
+      </div>
+      
+      <!-- TARJETA 2 - YOBANY (MÁS GRANDE) -->
+      <div id="tarjeta-yobany" style="background: rgba(0,0,0,0.8); border: 2px solid rgba(0,255,156,0.5); border-radius: 30px; padding: 50px 40px; text-align: center; width: 400px; backdrop-filter: blur(10px); transition: transform 0.3s, box-shadow 0.3s;">
+        <div id="foto-yobany" style="width: 180px; height: 180px; margin: 0 auto 25px auto; border-radius: 50%; border: 4px solid var(--c-gold); overflow: hidden; background: linear-gradient(135deg, #1a2a4a, #0a0a1a); display: flex; align-items: center; justify-content: center;">
+          <img id="img-yobany" src="Fotos/Yobany.png" alt="Yobany" style="width: 100%; height: 100%; object-fit: cover;" onerror="cargarEmojiYobany()">
+        </div>
+        <div style="color: var(--c-gold); font-size: 24px; font-weight: bold; margin-bottom: 15px;">Ing. Yobany Ramírez Moreno</div>
+        <div style="color: rgba(255,255,255,0.9); font-size: 18px; margin-bottom: 10px;">🎮 Desarrollo y Diseño</div>
+        <div style="margin-top: 20px; font-family: var(--font-hud); font-size: 13px; color: var(--c-green); padding: 8px 16px; border-top: 1px solid rgba(255,209,102,0.3); display: inline-block;">⭐ MISIÓN: INNOVACIÓN</div>
+      </div>
+    </div>
+    
+    <!-- FOTO DEL EQUIPO -->
+    <div style="display: flex; justify-content: center; margin-top: 60px;">
+      <div style="background: rgba(0,0,0,0.6); border-radius: 25px; padding: 25px 45px; text-align: center; border: 1px solid rgba(255,209,102,0.4);">
+        <div style="font-size: 70px;"></div>
+        <div style="color: var(--c-gold); font-family: var(--font-hud); font-size: 14px; letter-spacing: 3px; margin-top: 10px;">EQUIPO DIVISIÓN PLANETARIA</div>
+        <div style="color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 8px;">Academia Espacial de Distribución de Recursos</div>
+      </div>
+    </div>
+
+    <!-- BITÁCORA DE DESARROLLO -->
+<div style="background: rgba(0,0,0,0.5); border-radius: 20px; padding: 25px; margin: 40px auto 0 auto; text-align: center; max-width: 800px;">
+  <div style="color: var(--c-gold); font-family: var(--font-hud); font-size: 14px;">📅 BITÁCORA DE DESARROLLO</div>
+  <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin-top: 20px;">
+    <div style="background: rgba(0,255,156,0.1); padding: 10px; border-radius: 10px; width: 120px; color: white;">Mes 1<br>Diseño</div>
+    <div style="background: rgba(0,255,156,0.1); padding: 10px; border-radius: 10px; width: 120px; color: white;">Mes 2-3<br>Desarrollo</div>
+    <div style="background: rgba(0,255,156,0.1); padding: 10px; border-radius: 10px; width: 120px; color: white;">Mes 4<br>Pruebas</div>
+    <div style="background: rgba(0,255,156,0.1); padding: 10px; border-radius: 10px; width: 120px; color: white;">Mes 5<br>Lanzamiento</div>
+  </div>
+</div>
+
+    <!-- AÑO -->
+    <div style="text-align:center; margin-top: 60px; font-family:var(--font-hud); font-size: 13px; color: rgba(255,255,255,0.5);">
+      © 2026 DIVISIÓN PLANETARIA ◆ ACADEMIA ESPACIAL
+    </div>
+  </div>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+
+
+// CURSOR COHETE
+(function(){
+  const rocket = document.getElementById('rocket-cursor');
+  let px=-100,py=-100,lx=-100,ly=-100,angle=-90,lastSmoke=0;
+  const colors=['rgba(255,200,80,','rgba(255,140,50,','rgba(200,220,255,','rgba(150,160,200,'];
+  document.addEventListener('mousemove',e=>{
+    px=e.clientX; py=e.clientY;
+    const dx=px-lx, dy=py-ly, dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist>2) angle=Math.atan2(dy,dx)*(180/Math.PI)+90;
+    rocket.style.transform=`translate(${px-18}px,${py-18}px) rotate(${angle}deg)`;
+    const now=Date.now();
+    if(dist>3&&now-lastSmoke>22){ makeSmoke(lx,ly,angle); lastSmoke=now; }
+    lx=px; ly=py;
+  });
+  function makeSmoke(x,y,a){
+    const rad=(a-90)*Math.PI/180;
+    const ox=-Math.cos(rad)*14, oy=-Math.sin(rad)*14;
+    for(let i=0;i<3;i++){
+      const p=document.createElement('div');
+      p.className='smoke-particle';
+      const sz=6+Math.random()*10;
+      const col=colors[Math.floor(Math.random()*colors.length)];
+      const al=0.35+Math.random()*0.5;
+      const dx=(Math.random()-.5)*22+ox*.5;
+      const dy=(Math.random()-.5)*22+oy*.5;
+      p.style.cssText=`left:${x+ox+(Math.random()-.5)*5}px;top:${y+oy+(Math.random()-.5)*5}px;width:${sz}px;height:${sz}px;background:${col}${al});--dx:${dx}px;--dy:${dy}px;animation-duration:${.5+Math.random()*.4}s;`;
+      document.body.appendChild(p);
+      p.addEventListener('animationend',()=>p.remove());
+    }
+  }
+  document.addEventListener('click',e=>{const r=document.createElement('div');r.className='click-ripple';r.style.cssText=`left:${e.clientX}px;top:${e.clientY}px;`;document.body.appendChild(r);r.addEventListener('animationend',()=>r.remove());});
+})();
+
+// THREE.JS
+const container=document.getElementById('canvas-container');
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x04040f);
+scene.fog=new THREE.FogExp2(0x04040f,.015);
+const camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,.1,1000);
+camera.position.set(0,2,12);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+container.appendChild(renderer.domElement);
+
+const planet=new THREE.Mesh(new THREE.SphereGeometry(1.5,64,64),new THREE.MeshStandardMaterial({color:0x3A86FF,emissive:0x1a3a6a,emissiveIntensity:.4}));
+scene.add(planet);
+const ring=new THREE.Mesh(new THREE.TorusGeometry(2.2,.12,64,200),new THREE.MeshStandardMaterial({color:0xFFD166,emissive:0x8a6a20,emissiveIntensity:.6}));
+ring.rotation.x=Math.PI/2.5;
+scene.add(ring);
+
+const starGeo=new THREE.BufferGeometry();
+const starPos=new Float32Array(2000*3);
+for(let i=0;i<2000;i++){starPos[i*3]=(Math.random()-.5)*200;starPos[i*3+1]=(Math.random()-.5)*100;starPos[i*3+2]=(Math.random()-.5)*80-40;}
+starGeo.setAttribute('position',new THREE.BufferAttribute(starPos,3));
+const stars=new THREE.Points(starGeo,new THREE.PointsMaterial({color:0xffffff,size:.07}));
+scene.add(stars);
+
+// CRISTALES QUE SIGUEN AL MOUSE
+const crystals=[];
+for(let i=0;i<120;i++){
+  const c=new THREE.Mesh(new THREE.OctahedronGeometry(0.12,0),new THREE.MeshStandardMaterial({color:0xFFD166,emissive:0xaa7700,emissiveIntensity:.5,transparent:true,opacity:.9}));
+  c.userData={
+    radio:2+Math.random()*5,
+    ax:Math.random()*Math.PI*2,
+    ay:Math.random()*Math.PI*2,
+    velX:0.002+Math.random()*0.01,
+    velY:0.002+Math.random()*0.008,
+    rotX:0.01+Math.random()*0.04,
+    rotY:0.01+Math.random()*0.04,
+    rotZ:0.01+Math.random()*0.04
+  };
+  scene.add(c);
+  crystals.push(c);
+}
+
+scene.add(new THREE.AmbientLight(0x304060,.8));
+const dirLight=new THREE.DirectionalLight(0xffffff,1.2); dirLight.position.set(5,10,7); scene.add(dirLight);
+const blueLight=new THREE.PointLight(0x3A86FF,.6); blueLight.position.set(-3,1,-5); scene.add(blueLight);
+
+let mouseX=0,mouseY=0,mouseCryX=0,mouseCryY=0;
+document.addEventListener('mousemove',e=>{
+  mouseX=(e.clientX/innerWidth)*2-1;
+  mouseY=(e.clientY/innerHeight)*2-1;
+  mouseCryX=mouseX;
+  mouseCryY=mouseY;
+});
+
+let time=0;
+function animate(){
+  requestAnimationFrame(animate);
+  time+=0.008;
+  planet.rotation.y+=0.004;
+  planet.rotation.x=Math.sin(time*0.5)*0.08;
+  ring.rotation.z+=0.003;
+  ring.rotation.y+=0.002;
+  camera.position.x+=(mouseX*0.6-camera.position.x)*0.05;
+  camera.position.y+=(-mouseY*0.35-camera.position.y)*0.05;
+  camera.lookAt(0,0,0);
+  stars.rotation.y+=0.0004;
+  for(let i=0;i<crystals.length;i++){
+    const c=crystals[i];
+    c.userData.ax+=c.userData.velX;
+    c.userData.ay+=c.userData.velY;
+    let x=Math.sin(c.userData.ax)*c.userData.radio;
+    let z=Math.cos(c.userData.ay)*c.userData.radio;
+    let y=Math.sin(c.userData.ay*1.3)*1.5;
+    x+=mouseCryX*3.5;
+    y+=mouseCryY*2.5;
+    z+=mouseCryX*2;
+    c.position.set(x,y,z);
+    c.rotation.x+=c.userData.rotX;
+    c.rotation.y+=c.userData.rotY;
+    c.rotation.z+=c.userData.rotZ;
+  }
+  renderer.render(scene,camera);
+}
+animate();
+
+window.addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+function initStarMap(){
+  const canvas=document.getElementById('star-map-canvas');
+  if(!canvas)return;
+  canvas.width=canvas.parentElement.offsetWidth||780;
+  canvas.height=180;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#04040f';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  for(let i=0;i<80;i++){
+    ctx.fillStyle=`rgba(255,255,255,${.1+Math.random()*.4})`;
+    ctx.beginPath();
+    ctx.arc(Math.random()*canvas.width,Math.random()*canvas.height,.5+Math.random()*.5,0,Math.PI*2);
+    ctx.fill();
+  }
+  const cx=canvas.width/2,cy=canvas.height/2;
+  const grad=ctx.createRadialGradient(cx,cy,0,cx,cy,22);
+  grad.addColorStop(0,'#fff8c0');
+  grad.addColorStop(.4,'#FFD166');
+  ctx.fillStyle=grad;
+  ctx.beginPath();
+  ctx.arc(cx,cy,22,0,Math.PI*2);
+  ctx.fill();
+  const planets=[{name:'planeta 2',r:50,angle:1.2,size:5,color:'#aaa'},{name:'planeta 1',r:80,angle:2.5,size:7,color:'#e8c070'},{name:'planeta 3',r:110,angle:.4,size:8,color:'#3A86FF'}];
+  planets.forEach(p=>{
+    const px=cx+Math.cos(p.angle)*p.r,py=cy+Math.sin(p.angle)*p.r;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    ctx.arc(px,py,p.size,0,Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle='white';
+    ctx.font='9px monospace';
+    ctx.fillText(p.name,px,py+p.size+12);
+  });
+}
+setTimeout(initStarMap,500);
+
+function animateCounters(){
+  document.querySelectorAll('[data-target]').forEach(el=>{
+    const target=parseInt(el.dataset.target);
+    let current=0;
+    const step=Math.ceil(target/40);
+    const timer=setInterval(()=>{
+      current+=step;
+      if(current>=target){current=target;clearInterval(timer);}
+      el.textContent=current;
+    },40);
+  });
+}
+
+function goTo(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(`screen-${id}`).classList.add('active');
+  window.scrollTo({top:0});
+  if(id==='inicio') animateCounters();
+  if(id==='lore') actualizarContadoresMundo();
+}
+window.goTo=goTo;
+
+function showDialog(msg) {
+  const d = document.getElementById('dialogo-flotante');
+  if(d) {
+    d.style.display = 'block';
+    d.innerHTML = msg;
+    clearTimeout(d._t);
+    d._t = setTimeout(() => {
+      d.style.opacity = '0';
+      setTimeout(() => {
+        d.style.display = 'none';
+        d.style.opacity = '';
+      }, 500);
+    }, 3000);
+  } else {
+    alert(msg);
+  }
+}window.showDialog=showDialog;
+
+function actualizarContadoresMundo(){
+  const planetas=document.getElementById('planetas-explorados');
+  const cristales=document.getElementById('cristales-recolectados');
+  if(planetas) planetas.textContent='3';
+  if(cristales) cristales.textContent='48';
+}
+
+function playVideo(){
+  const video=document.getElementById('game-video');
+  const btn=document.getElementById('play-vid-btn');
+  if(video){
+    if(video.paused){
+      video.play();
+      if(btn) btn.textContent='⏸ PAUSE';
+    } else {
+      video.pause();
+      if(btn) btn.textContent='▶ PLAY';
+    }
+  }
+}
+
+function muteVideo(){
+  const video=document.getElementById('game-video');
+  if(video) video.muted=!video.muted;
+}
+
+function abrirImagen(ruta){
+  const lb=document.getElementById('lightbox');
+  const img=document.getElementById('lightbox-img');
+  if(lb && img){
+    img.src=ruta;
+    lb.style.display='flex';
+  } else {
+    showDialog('📸 Imagen no disponible');
+  }
+}
+
+function cerrarLightbox(){
+  document.getElementById('lightbox').style.display='none';
+}
+
+// FUNCIONES PARA CARGAR EMOJIS SI NO HAY FOTOS
+function cargarEmojiJasbleidy() {
+  const container = document.getElementById('foto-jasbleidy');
+  if(container) {
+    container.innerHTML = '<div style="font-size: 60px; display: flex; align-items: center; justify-content: center; height: 100%;">👩‍🚀</div>';
+  }
+}
+
+function cargarEmojiYobany() {
+  const container = document.getElementById('foto-yobany');
+  if(container) {
+    container.innerHTML = '<div style="font-size: 60px; display: flex; align-items: center; justify-content: center; height: 100%;">👨‍🚀</div>';
+  }
+}
+
+// EFECTO HOVER EN TARJETAS
+document.addEventListener('DOMContentLoaded', function() {
+  const tarjeta1 = document.getElementById('tarjeta-jasbleidy');
+  const tarjeta2 = document.getElementById('tarjeta-yobany');
+  
+  if(tarjeta1) {
+    tarjeta1.addEventListener('mouseenter', () => tarjeta1.style.transform = 'translateY(-10px)');
+    tarjeta1.addEventListener('mouseleave', () => tarjeta1.style.transform = 'translateY(0)');
+  }
+  
+  if(tarjeta2) {
+    tarjeta2.addEventListener('mouseenter', () => tarjeta2.style.transform = 'translateY(-10px)');
+    tarjeta2.addEventListener('mouseleave', () => tarjeta2.style.transform = 'translateY(0)');
+  }
+});
+
+
+animateCounters();
+setTimeout(actualizarContadoresMundo, 500);
+
+
+// FUNCIONES PARA LAS FOTOS
+function abrirImagen(ruta) {
+  const lb = document.getElementById('lightbox');
+  const img = document.getElementById('lightbox-img');
+  if(lb && img) {
+    img.src = ruta;
+    lb.style.display = 'flex';
+  } else {
+    alert('📸 Imagen: ' + ruta);
+  }
+}
+
+function cerrarLightbox() {
+  document.getElementById('lightbox').style.display = 'none';
+}
+
+
+</script>
+
+<!-- LIGHTBOX PARA VER FOTOS -->
+<div id="lightbox" onclick="cerrarLightbox()" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.95); z-index:99999; align-items:center; justify-content:center; cursor:pointer;">
+  <img id="lightbox-img" src="" style="max-width:90vw; max-height:90vh; border-radius:8px; border:2px solid var(--c-gold);">
+</div>
+
+</body>
+</html>
